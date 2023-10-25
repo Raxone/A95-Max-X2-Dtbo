@@ -1,0 +1,34 @@
+/dts-v1/;
+
+/ {
+	
+	fragment@0 {
+		target-path = "/";
+
+		__overlay__ {
+
+		ethernet@ff3f0000 {
+		pinctrl-names = "external_eth_pins";
+		pinctrl-0 = <0xbd>;
+		pinctrl-1 = <0x12>;
+		mc_val = <0x1621>;
+		internal_phy = <0x00>;
+		phandle = <0x99>;
+			};
+			
+		};
+	};
+
+	fragment@1 {
+		target-path = "/";
+
+		__overlay__ {
+
+			dummy-charger {
+				compatible = "amlogic, dummy-charger";
+				status = "okay";
+			};
+		};
+	};
+};
+

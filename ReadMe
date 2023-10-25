@@ -1,0 +1,134 @@
+
+
+A95 Max Amlogic s905x2 android 9.
+
+Stock firmware for this is android box is 8.1.
+
+But box A95 F2 use same rsa and aes key for secure board.
+
+Bootloader for A95 Max, part (bl2.bin) have turned off secure check for fip.
+
+Becouse box's use same rsa and aes key i just use bl2.bin from A95 Max and all next parts bootloader from A95 F2.
+
+Must use bl2 from A95 Max becouse asc.bin (Timing for ddr is not ok from A95 F2).
+
+With modded bootloader and kernel,dtb,etc. from A95 F2 board work normal.
+
+But only thing what not work is lan(good gigabit lan).
+
+Without rsa key is not possibile to change anything in dtb,kernel,bootloader.
+
+A95 F2 use lan from soc(100mb) or internal lan but A95 Max use external RTL8211F lan(1Gbit).
+
+But there is powerfull part of firmware, dtbo(device tree blob overlay).
+
+Dtbo not secured/encrypted and relatively easy to include part what need to change in dtb image.
+
+When board start/boot, bootloader load dtb and dtbo, but dtbo overwrite dtb part what is in dtbo, part must be same name from dtb tree.
+
+#Exemple (overwrite ethernet config from dtb).
+
+Dtbo use fragment@0 but if need we can use more then one fragment.
+
+
+dtbo.dts
+##########################################################################
+
+/dts-v1/;
+
+/ {
+	
+	fragment@0 {
+		target-path = "/";
+
+		__overlay__ {
+
+		ethernet@ff3f0000 {
+		compatible = "amlogic, g12a-eth-dwmac\0snps,dwmac";
+		reg = <0xff3f0000 0x10000 0xff634540 0x08 0xff64c000 0xa0>;
+		reg-names = "eth_base\0eth_cfg\0eth_pll";
+		interrupts = <0x00 0x08 0x01>;
+		interrupt-names = "macirq";
+		status = "okay";
+		clocks = <0x02 0x38>;
+		clock-names = "ethclk81";
+		pll_val = <0x9c0040a 0x927e0000 0xac5f49e5>;
+		analog_val = <0x20200000 0xc000 0x23>;
+		pinctrl-names = "external_eth_pins";
+		pinctrl-0 = <0xbd>;
+		pinctrl-1 = <0x12>;
+		mc_val = <0x1621>;
+		internal_phy = <0x00>;
+		phandle = <0x99>;
+			};
+			
+		};
+	};
+
+	fragment@1 {
+		target-path = "/";
+
+		__overlay__ {
+
+			dummy-charger {
+				compatible = "amlogic, dummy-charger";
+				status = "okay";
+			};
+		};
+	};
+};
+
+#######################################################################
+
+
+Good thing is becouse we can make/build without use kernel source.
+With dtc(device tree compiler) app. can make dtb/dtbo image but in this case dtb is encypted.
+
+#Exemple
+
+dtc -O=#output format -o=#output file dtbo.dts=#input file
+
+dtc -@ -O dtb -o f2_max.dtbo -b 0 dtbo.dts
+
+This command produce dtb/dtbo image but without header (first (0x40/64bytes) from normal dtbo image compiled from kernel).
+To fix this problem just need copy first 0x40 from normal dtbo and use cat command.
+
+#Exemple extract heder from a95_f2 or from a95_max dtbo.PARTITION
+
+dd if=dtbo.PARTITION of=header_dtbo bs=64 count=1
+
+
+#Exemple
+
+cat header_dtbo  f2_max.dtbo > dtbo.PARTITION
+
+
+Image dtbo.PARTITION need to be burned with update app from amlogic and board must be in DFU/USBDL modes or fastboot.
+ 
+Or dtb.PARTITION included in firmware image.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+ 
