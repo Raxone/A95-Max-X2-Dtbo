@@ -1,134 +1,128 @@
+# A95 Max (S905X2) Android 9 - Custom Firmware with LAN Fix via DTBO
 
+This project covers a custom bootloader and firmware configuration for the **A95 Max** Android TV Box, which uses the **Amlogic S905X2** chipset and ships with Android 9. The stock firmware for this box is Android 8.1, but it can be upgraded using parts from a similar box, the **A95 F2**.
 
-A95 Max Amlogic s905x2 android 9.
+---
 
-Stock firmware for this is android box is 8.1.
+## 🔐 Bootloader Modding
 
-But box A95 F2 use same rsa and aes key for secure board.
+Both **A95 Max** and **A95 F2** share the same **RSA** and **AES** secure boot keys, which allows for bootloader and firmware component interchange with some tweaks.
 
-Bootloader for A95 Max, part (bl2.bin) have turned off secure check for fip.
+### Why This Works
 
-Becouse box's use same rsa and aes key i just use bl2.bin from A95 Max and all next parts bootloader from A95 F2.
+- **A95 Max's `bl2.bin`** disables secure FIP checks.
+- **A95 F2** components (kernel, DTB, etc.) can be used after `bl2.bin` from **A95 Max** is loaded.
+- Must use **A95 Max's `bl2.bin`** because its `asc.bin` includes correct DDR timing.
 
-Must use bl2 from A95 Max becouse asc.bin (Timing for ddr is not ok from A95 F2).
+### Bootloader Composition
 
-With modded bootloader and kernel,dtb,etc. from A95 F2 board work normal.
+- `bl2.bin` from **A95 Max**  
+- All other bootloader parts (e.g. FIP, kernel, DTB) from **A95 F2**
 
-But only thing what not work is lan(good gigabit lan).
+### Result
 
-Without rsa key is not possibile to change anything in dtb,kernel,bootloader.
+- System boots and runs fine  
+- Only issue: **LAN (Gigabit) doesn't work**
 
-A95 F2 use lan from soc(100mb) or internal lan but A95 Max use external RTL8211F lan(1Gbit).
+---
 
-But there is powerfull part of firmware, dtbo(device tree blob overlay).
+## ⚠️ LAN Compatibility Issue
 
-Dtbo not secured/encrypted and relatively easy to include part what need to change in dtb image.
+- **A95 Max** uses external **RTL8211F (Gigabit)** LAN chip  
+- **A95 F2** uses SoC-integrated **100M LAN** or internal PHY  
+- Cannot change DTB or kernel directly due to secure signing (RSA)
 
-When board start/boot, bootloader load dtb and dtbo, but dtbo overwrite dtb part what is in dtbo, part must be same name from dtb tree.
+---
 
-#Exemple (overwrite ethernet config from dtb).
+## ✅ Workaround Using DTBO
 
-Dtbo use fragment@0 but if need we can use more then one fragment.
+The **Device Tree Blob Overlay (DTBO)** is not encrypted, and it's loaded during boot to override parts of the original DTB.
 
+This allows patching the Ethernet configuration to enable support for the RTL8211F chip.
 
-dtbo.dts
-##########################################################################
+### DTBO Example: Override Ethernet Node
 
+```dts
 /dts-v1/;
 
 / {
-	
-	fragment@0 {
-		target-path = "/";
+    fragment@0 {
+        target-path = "/";
 
-		__overlay__ {
+        __overlay__ {
+            ethernet@ff3f0000 {
+                compatible = "amlogic, g12a-eth-dwmac\0snps,dwmac";
+                reg = <0xff3f0000 0x10000 0xff634540 0x08 0xff64c000 0xa0>;
+                reg-names = "eth_base\0eth_cfg\0eth_pll";
+                interrupts = <0x00 0x08 0x01>;
+                interrupt-names = "macirq";
+                status = "okay";
+                clocks = <0x02 0x38>;
+                clock-names = "ethclk81";
+                pll_val = <0x9c0040a 0x927e0000 0xac5f49e5>;
+                analog_val = <0x20200000 0xc000 0x23>;
+                pinctrl-names = "external_eth_pins";
+                pinctrl-0 = <0xbd>;
+                pinctrl-1 = <0x12>;
+                mc_val = <0x1621>;
+                internal_phy = <0x00>;
+                phandle = <0x99>;
+            };
+        };
+    };
 
-		ethernet@ff3f0000 {
-		compatible = "amlogic, g12a-eth-dwmac\0snps,dwmac";
-		reg = <0xff3f0000 0x10000 0xff634540 0x08 0xff64c000 0xa0>;
-		reg-names = "eth_base\0eth_cfg\0eth_pll";
-		interrupts = <0x00 0x08 0x01>;
-		interrupt-names = "macirq";
-		status = "okay";
-		clocks = <0x02 0x38>;
-		clock-names = "ethclk81";
-		pll_val = <0x9c0040a 0x927e0000 0xac5f49e5>;
-		analog_val = <0x20200000 0xc000 0x23>;
-		pinctrl-names = "external_eth_pins";
-		pinctrl-0 = <0xbd>;
-		pinctrl-1 = <0x12>;
-		mc_val = <0x1621>;
-		internal_phy = <0x00>;
-		phandle = <0x99>;
-			};
-			
-		};
-	};
+    fragment@1 {
+        target-path = "/";
 
-	fragment@1 {
-		target-path = "/";
-
-		__overlay__ {
-
-			dummy-charger {
-				compatible = "amlogic, dummy-charger";
-				status = "okay";
-			};
-		};
-	};
+        __overlay__ {
+            dummy-charger {
+                compatible = "amlogic, dummy-charger";
+                status = "okay";
+            };
+        };
+    };
 };
+```
 
-#######################################################################
+---
 
+## 🛠️ Building the DTBO
 
-Good thing is becouse we can make/build without use kernel source.
-With dtc(device tree compiler) app. can make dtb/dtbo image but in this case dtb is encypted.
+You don't need kernel source. Use the `dtc` tool (Device Tree Compiler):
 
-#Exemple
-
-dtc -O=#output format -o=#output file dtbo.dts=#input file
-
+```bash
 dtc -@ -O dtb -o f2_max.dtbo -b 0 dtbo.dts
+```
 
-This command produce dtb/dtbo image but without header (first (0x40/64bytes) from normal dtbo image compiled from kernel).
-To fix this problem just need copy first 0x40 from normal dtbo and use cat command.
+This will generate a **dtbo image**, but it **lacks the 64-byte header** required by Amlogic devices.
 
-#Exemple extract heder from a95_f2 or from a95_max dtbo.PARTITION
+### Fix Header
 
+Extract header from a known working `dtbo.PARTITION`:
+
+```bash
 dd if=dtbo.PARTITION of=header_dtbo bs=64 count=1
+```
 
+Then prepend it:
 
-#Exemple
+```bash
+cat header_dtbo f2_max.dtbo > dtbo.PARTITION
+```
 
-cat header_dtbo  f2_max.dtbo > dtbo.PARTITION
+---
 
+## 🚀 Flashing the DTBO
 
-Image dtbo.PARTITION need to be burned with update app from amlogic and board must be in DFU/USBDL modes or fastboot.
- 
-Or dtb.PARTITION included in firmware image.
+You can flash the modified `dtbo.PARTITION` using:
 
+- Amlogic **update tool**
+- DFU / USBDL / Fastboot mode
+- Or include it in a full firmware image
 
+---
 
+## 📆 Modded Firmware
 
-Modded Firmware.
-https://drive.google.com/file/d/1OtjK0Lo65siEiHLkZ6yQn6SCZpuUkmWc/view?usp=drive_link
+[Download Custom Firmware](https://drive.google.com/file/d/1OtjK0Lo65siEiHLkZ6yQn6SCZpuUkmWc/view?usp=drive_link)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
- 
